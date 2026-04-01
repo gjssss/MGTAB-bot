@@ -10,4 +10,9 @@ dependencies = [
     "scikit-learn",
     "xgboost",
     "numpy",
+    "transformers",
+    "sentencepiece",
+    "joblib",
+    "fastapi",
+    "uvicorn[standard]",
 ]

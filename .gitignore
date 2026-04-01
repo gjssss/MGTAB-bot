@@ -16,3 +16,7 @@ dist/
 build/
 *.egg
 .venv/
+uv.lock
+
+# Model checkpoints
+checkpoints/
