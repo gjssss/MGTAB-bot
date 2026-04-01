@@ -1,0 +1,13 @@
+[project]
+name = "mgtab"
+version = "0.1.0"
+description = "MGTAB: A Multi-Relational Graph-Based Twitter Account Detection Benchmark"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "torch==2.6.0",
+    "torch-geometric>=2.6",
+    "pytorch-lightning>=2.0",
+    "scikit-learn",
+    "xgboost",
+    "numpy",
+]

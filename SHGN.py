@@ -99,8 +99,8 @@ def main(seed):
         optimizer.step()
         print('Epoch: {:04d}'.format(epoch + 1),
               'loss_train: {:.4f}'.format(loss_train.item()),
-              'acc_train: {:.4f}'.format(acc_train.item()),
-              'acc_val: {:.4f}'.format(acc_val.item()), )
+              'acc_train: {:.4f}'.format(acc_train),
+              'acc_val: {:.4f}'.format(acc_val), )
         return acc_val
 
 

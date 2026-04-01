@@ -62,7 +62,6 @@ for i in args.models_list:
                 random_state=args.random_seed[j],
                 n_estimators=50,
                 learning_rate=1.0,
-                algorithm='SAMME.R',
             )
         elif i == 2:
             clf = RandomForestClassifier(
