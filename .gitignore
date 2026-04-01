@@ -20,3 +20,6 @@ uv.lock
 
 # Model checkpoints
 checkpoints/
+
+# Embedding models (large, download locally)
+models/

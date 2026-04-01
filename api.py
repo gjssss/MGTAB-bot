@@ -8,6 +8,8 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message=".*not sharded.*")
 
+from pathlib import Path
+
 import numpy as np
 import joblib
 import torch
@@ -20,8 +22,11 @@ from preprocess import build_feature_vector, EMBEDDING_DIM
 
 EMBEDDING_MODELS = {
     "en": "roberta-base",
-    "zh": "hfl/chinese-roberta-wwm-ext",
+    "zh": "chinese-roberta-wwm-ext",
 }
+
+# Local models directory
+MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 clf_model = None
@@ -56,11 +61,14 @@ def load_clf():
 def load_embedding(lang: str):
     if lang not in embed_models:
         model_name = EMBEDDING_MODELS[lang]
-        tokenizers[lang] = AutoTokenizer.from_pretrained(model_name)
-        m = AutoModel.from_pretrained(
-            model_name, ignore_mismatched_sizes=True,
-            use_safetensors=(lang == "en"),
-        )
+        model_path = MODELS_DIR / model_name
+        # Use local model if exists, otherwise fallback to HuggingFace
+        if model_path.exists():
+            tokenizers[lang] = AutoTokenizer.from_pretrained(str(model_path))
+            m = AutoModel.from_pretrained(str(model_path), ignore_mismatched_sizes=True)
+        else:
+            tokenizers[lang] = AutoTokenizer.from_pretrained(model_name)
+            m = AutoModel.from_pretrained(model_name, ignore_mismatched_sizes=True)
         m.eval()
         m.to(device)
         embed_models[lang] = m

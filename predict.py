@@ -3,6 +3,8 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["SAFETENSORS_FAST_GPU"] = "0"
 
+from pathlib import Path
+
 import numpy as np
 import joblib
 
@@ -14,8 +16,11 @@ _embed_model_cache = {}
 
 EMBEDDING_MODELS = {
     "en": "roberta-base",
-    "zh": "hfl/chinese-roberta-wwm-ext",
+    "zh": "chinese-roberta-wwm-ext",
 }
+
+# Local models directory
+MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 
 def _load_model(model_path: str = "checkpoints/adaboost_bot.joblib"):
@@ -37,11 +42,16 @@ def _load_embedding_model(lang: str):
         warnings.filterwarnings("ignore", message=".*not sharded.*")
 
         model_name = EMBEDDING_MODELS[lang]
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModel.from_pretrained(
-            model_name, ignore_mismatched_sizes=True,
-            use_safetensors=True if lang == "en" else False,
-        )
+        model_path = MODELS_DIR / model_name
+        
+        # Use local model if exists, otherwise fallback to HuggingFace
+        if model_path.exists():
+            tokenizer = AutoTokenizer.from_pretrained(str(model_path))
+            model = AutoModel.from_pretrained(str(model_path), ignore_mismatched_sizes=True)
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name, ignore_mismatched_sizes=True)
+        
         model.eval()
         _tokenizer_cache[lang] = tokenizer
         _embed_model_cache[lang] = model
