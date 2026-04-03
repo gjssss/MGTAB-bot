@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.github/
+
+# OS
+.DS_Store
+
+# Cache
+.cache/
+tmp/
+
+# Logs
+*.log
+
+# Large data files (mount via volume)
+Dataset/
+data/
+Standardization/
+test_samples/
+
+# Lock file (use uv.lock from build context)
+uv.lock

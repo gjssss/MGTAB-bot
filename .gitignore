@@ -23,3 +23,6 @@ checkpoints/
 
 # Embedding models (large, download locally)
 models/
+
+# Test samples
+test_samples/

@@ -1,0 +1,53 @@
+services:
+  bot-detection:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mgtab2-bot-detection:latest
+    container_name: mgtab2-api
+    ports:
+      - "30102:30102"
+    environment:
+      - BOT_PORT=30102
+      - BOT_DEVICE=cuda
+    volumes:
+      # Mount Dataset directory (large files not included in image)
+      - ./Dataset:/app/Dataset:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30102/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # CPU-only version (alternative)
+  bot-detection-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mgtab2-bot-detection:cpu
+    container_name: mgtab2-api-cpu
+    ports:
+      - "30102:30102"
+    environment:
+      - BOT_PORT=30102
+      - BOT_DEVICE=cpu
+    volumes:
+      - ./Dataset:/app/Dataset:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30102/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - cpu
