@@ -29,10 +29,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy application code
-COPY api.py predict.py preprocess.py train_adaboost.py ./
-COPY Dataset.py utils.py models.py layer.py samplemodel.py ./
-COPY MGTAB-GNN.py MGTAB-ML.py RGT.py HGT.py SHGN.py ./
-COPY Cresci15-GNN.py Cresci15-ML.py GNN_sample_large.py ./
+COPY api.py predict.py test.py preprocess.py ./
+COPY train_adaboost.py build_dataset.py download.py ./
+COPY utils/ ./utils/
 
 # Copy models and checkpoints (for offline usage)
 COPY models/ ./models/

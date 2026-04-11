@@ -2,10 +2,7 @@
 .vscode/
 
 # Dataset files (large)
-Dataset/*.zip
-Dataset/Cresci-15/
-Dataset/MGTAB/
-Dataset/MGTAB-large/
+Dataset
 
 # Python
 __pycache__/

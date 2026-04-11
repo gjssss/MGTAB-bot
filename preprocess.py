@@ -1,12 +1,10 @@
 import math
 import numpy as np
 
-FEATURE_DIM = 788
-EMBEDDING_DIM = 768
 PROPERTY_DIM = 20
 
-# Column layout of the 788-dim feature vector:
-#   col[0]:  is_protected (bool, unused by BotRGCN but kept for compatibility)
+# Column layout of the feature vector:
+#   col[0]:  is_protected
 #   col[1]:  is_verified
 #   col[2]:  default_profile_image
 #   col[3]:  followers_count (ln+minmax normalized)
@@ -26,7 +24,8 @@ PROPERTY_DIM = 20
 #   col[17]: has_description
 #   col[18]: has_location
 #   col[19]: unknown_bool (default 0)
-#   col[20..787]: tweet semantic embedding (768-dim)
+#   col[20..]: Qwen3-Embedding (dimension depends on selected size:
+#              0.6B → 1024, 4B → 2560, 8B → 4096)
 
 NORMALIZATION_CONFIG = {
     "followers_count":          {"col": 3,  "min": 0.0,      "max": 25.572674, "log": True},
@@ -64,7 +63,6 @@ def extract_properties(user_json: dict) -> np.ndarray:
     """Extract 20-dim property vector from user JSON."""
     vec = np.zeros(PROPERTY_DIM, dtype=np.float32)
 
-    # Boolean fields
     vec[BOOL_FIELDS["protected"]] = float(bool(user_json.get("protected", False)))
     vec[BOOL_FIELDS["verified"]] = float(bool(user_json.get("verified", False)))
     vec[BOOL_FIELDS["default_profile_image"]] = float(bool(user_json.get("default_profile_image", False)))
@@ -74,10 +72,8 @@ def extract_properties(user_json: dict) -> np.ndarray:
     vec[BOOL_FIELDS["has_url"]] = float(bool(user_json.get("url")))
     vec[BOOL_FIELDS["has_description"]] = float(bool(user_json.get("description")))
     vec[BOOL_FIELDS["has_location"]] = float(bool(user_json.get("location")))
-    # col[19]: unknown bool, default 0
     vec[19] = 0.0
 
-    # Numeric fields with ln + minmax normalization
     followers = user_json.get("followers_count", 0)
     friends = user_json.get("friends_count", 0)
 
@@ -105,12 +101,6 @@ def extract_properties(user_json: dict) -> np.ndarray:
 
 
 def _parse_created_at(value) -> float:
-    """Parse created_at to a numeric value compatible with the dataset.
-    
-    The dataset uses ln(unix_timestamp_in_some_unit) normalized.
-    We convert ISO or Twitter-format datetime to unix timestamp,
-    then apply ln.
-    """
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
@@ -119,7 +109,6 @@ def _parse_created_at(value) -> float:
     from datetime import datetime, timezone
 
     dt = None
-    # Try ISO format: 2015-01-01T00:00:00Z
     for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z",
                 "%a %b %d %H:%M:%S %z %Y"):
         try:
@@ -138,10 +127,16 @@ def _parse_created_at(value) -> float:
 
 
 def build_feature_vector(user_json: dict, tweet_embedding: np.ndarray) -> np.ndarray:
-    """Build the full 788-dim feature vector."""
-    props = extract_properties(user_json)
+    """Build the full (PROPERTY_DIM + embedding_dim)-dim feature vector.
+
+    The embedding dimension is determined by the Qwen3-Embedding size selected
+    at training time and persisted in checkpoints/preprocess_config.json.
+    """
     if tweet_embedding is None:
-        tweet_embedding = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-    assert tweet_embedding.shape == (EMBEDDING_DIM,), \
-        f"Expected embedding dim {EMBEDDING_DIM}, got {tweet_embedding.shape}"
+        raise ValueError("tweet_embedding must not be None")
+    if tweet_embedding.ndim != 1:
+        raise ValueError(
+            f"Expected 1-D tweet_embedding, got shape {tweet_embedding.shape}"
+        )
+    props = extract_properties(user_json)
     return np.concatenate([props, tweet_embedding]).astype(np.float32)

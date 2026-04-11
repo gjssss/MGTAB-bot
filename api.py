@@ -4,41 +4,35 @@ os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
 import logging
 import warnings
+
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message=".*not sharded.*")
 
-from pathlib import Path
+from contextlib import asynccontextmanager
 
-import numpy as np
-import joblib
-import torch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from transformers import AutoTokenizer, AutoModel
+from pydantic import BaseModel, ConfigDict
 
-from preprocess import build_feature_vector, EMBEDDING_DIM
+from utils.config import load_preprocess_config
+from utils.device import resolve_device
+from utils.embedding import load_embedding
+from utils.inference import load_classifier, predict_user
 
-EMBEDDING_MODELS = {
-    "en": "roberta-base",
-    "zh": "chinese-roberta-wwm-ext",
-}
 
-# Local models directory
-MODELS_DIR = Path(__file__).resolve().parent / "models"
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-clf_model = None
-tokenizers: dict = {}
-embed_models: dict = {}
-
-from contextlib import asynccontextmanager
+_runtime: dict = {}
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    load_clf()
+    cfg = load_preprocess_config()
+    device = resolve_device("auto")
+    clf = load_classifier()
+    tokenizer, emb_model, dim = load_embedding(cfg["qwen_size"], device)
+    _runtime.update(
+        cfg=cfg, device=device, clf=clf, tokenizer=tokenizer, emb_model=emb_model, dim=dim
+    )
     yield
 
 
@@ -51,78 +45,19 @@ app.add_middleware(
 )
 
 
-def load_clf():
-    global clf_model
-    if clf_model is None:
-        clf_model = joblib.load("checkpoints/adaboost_bot.joblib")
-    return clf_model
+def predict_single(user: dict) -> dict:
+    return predict_user(
+        user,
+        _runtime["clf"],
+        _runtime["tokenizer"],
+        _runtime["emb_model"],
+        _runtime["device"],
+    )
 
-
-def load_embedding(lang: str):
-    if lang not in embed_models:
-        model_name = EMBEDDING_MODELS[lang]
-        model_path = MODELS_DIR / model_name
-        # Use local model if exists, otherwise fallback to HuggingFace
-        if model_path.exists():
-            tokenizers[lang] = AutoTokenizer.from_pretrained(str(model_path))
-            m = AutoModel.from_pretrained(str(model_path), ignore_mismatched_sizes=True)
-        else:
-            tokenizers[lang] = AutoTokenizer.from_pretrained(model_name)
-            m = AutoModel.from_pretrained(model_name, ignore_mismatched_sizes=True)
-        m.eval()
-        m.to(device)
-        embed_models[lang] = m
-    return tokenizers[lang], embed_models[lang]
-
-
-def encode_tweets(tweets: list[str], lang: str) -> np.ndarray:
-    if not tweets:
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-
-    tokenizer, model = load_embedding(lang)
-    embeddings = []
-
-    with torch.no_grad():
-        for text in tweets:
-            if not text or not text.strip():
-                continue
-            inputs = tokenizer(
-                text, return_tensors="pt",
-                truncation=True, max_length=512, padding=True,
-            )
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-            output = model(**inputs)
-            cls_vec = output.last_hidden_state[:, 0, :].squeeze(0).cpu().numpy()
-            embeddings.append(cls_vec)
-
-    if not embeddings:
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-    return np.mean(embeddings, axis=0).astype(np.float32)
-
-
-def predict_single(user: dict, lang: str) -> dict:
-    tweet_emb = encode_tweets(user.get("tweets", []), lang)
-    feature_vec = build_feature_vector(user, tweet_emb).reshape(1, -1)
-
-    clf = load_clf()
-    pred = int(clf.predict(feature_vec)[0])
-    proba = clf.predict_proba(feature_vec)[0]
-
-    label = "bot" if pred == 1 else "human"
-    return {
-        "label": label,
-        "prediction": pred,
-        "confidence": round(float(proba[pred]), 4),
-        "probabilities": {
-            "human": round(float(proba[0]), 4),
-            "bot": round(float(proba[1]), 4),
-        },
-    }
-
-
-# --- Pydantic models ---
 
 class UserProfile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     verified: bool = False
     default_profile_image: bool = False
     default_profile: bool = False
@@ -144,16 +79,14 @@ class UserProfile(BaseModel):
 
 
 class SingleRequest(BaseModel):
-    lang: str = "en"
+    model_config = ConfigDict(extra="forbid")
     user: UserProfile
 
 
 class BatchRequest(BaseModel):
-    lang: str = "en"
+    model_config = ConfigDict(extra="forbid")
     items: list[UserProfile]
 
-
-# --- Routes ---
 
 @app.get("/health")
 def health():
@@ -163,8 +96,11 @@ def health():
         "data": {
             "status": "healthy",
             "model": "AdaBoost (n_estimators=50)",
-            "device": str(device),
-            "embedding_models": EMBEDDING_MODELS,
+            "device": str(_runtime.get("device")),
+            "embedding": {
+                "qwen_size": _runtime.get("cfg", {}).get("qwen_size"),
+                "embedding_dim": _runtime.get("dim"),
+            },
         },
     }
 
@@ -172,7 +108,7 @@ def health():
 @app.post("/bot")
 def detect_single(req: SingleRequest):
     try:
-        result = predict_single(req.user.model_dump(), req.lang)
+        result = predict_single(req.user.model_dump())
         return {"success": True, "message": "ok", "data": result}
     except Exception as e:
         return {"success": False, "message": str(e), "data": None}
@@ -182,15 +118,13 @@ def detect_single(req: SingleRequest):
 def detect_batch(req: BatchRequest):
     results = []
     errors = []
-
     for i, user in enumerate(req.items):
         try:
-            r = predict_single(user.model_dump(), req.lang)
+            r = predict_single(user.model_dump())
             r["index"] = i
             results.append(r)
         except Exception as e:
             errors.append({"index": i, "error": str(e)})
-
     return {
         "success": True,
         "message": "ok",
