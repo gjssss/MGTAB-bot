@@ -48,7 +48,10 @@ def load_embedding(
 
     tokenizer = AutoTokenizer.from_pretrained(str(local), padding_side="left")
     dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
-    model = AutoModel.from_pretrained(str(local), torch_dtype=dtype)
+    try:
+        model = AutoModel.from_pretrained(str(local), dtype=dtype)
+    except TypeError:
+        model = AutoModel.from_pretrained(str(local), torch_dtype=dtype)
     model.eval()
     model.to(device)
 

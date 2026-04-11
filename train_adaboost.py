@@ -9,6 +9,7 @@ import torch
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.utils import shuffle
+from tqdm import tqdm
 
 from preprocess import NORMALIZATION_CONFIG, BOOL_FIELDS, PROPERTY_DIM
 from utils.config import save_preprocess_config
@@ -79,7 +80,8 @@ def main():
 
     acc_list, prec_list, rec_list, f1_list = [], [], [], []
 
-    for seed in args.random_seed:
+    seed_pbar = tqdm(args.random_seed, desc="training seeds", unit="seed")
+    for seed in seed_pbar:
         idx = shuffle(np.arange(n), random_state=seed)
         train_idx = idx[: int(0.7 * n)]
         test_idx = idx[int(0.9 * n):]
@@ -107,13 +109,21 @@ def main():
         rec_list.append(rec * 100)
         f1_list.append(f1 * 100)
 
-        print(f"seed={seed}: acc={acc*100:.2f}  prec={prec*100:.2f}  "
-              f"rec={rec*100:.2f}  f1={f1*100:.2f}")
+        seed_pbar.set_postfix(
+            seed=seed,
+            acc=f"{acc*100:.2f}",
+            f1=f"{f1*100:.2f}",
+        )
+        seed_pbar.write(
+            f"seed={seed}: acc={acc*100:.2f}  prec={prec*100:.2f}  "
+            f"rec={rec*100:.2f}  f1={f1*100:.2f}"
+        )
 
         if f1 > best_f1:
             best_f1 = f1
             best_clf = clf
             best_seed = seed
+    seed_pbar.close()
 
     print(f"\nacc:       {np.mean(acc_list):.2f} +/- {np.std(acc_list):.2f}")
     print(f"precision: {np.mean(prec_list):.2f} +/- {np.std(prec_list):.2f}")

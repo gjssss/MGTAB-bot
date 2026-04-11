@@ -3,6 +3,8 @@ import argparse
 import json
 from pathlib import Path
 
+from tqdm import tqdm
+
 from utils.config import load_preprocess_config
 from utils.device import resolve_device
 from utils.embedding import load_embedding
@@ -66,14 +68,26 @@ def main():
     tokenizer, emb_model, dim = load_embedding(cfg["qwen_size"], device)
     print(f"[test] qwen_size={cfg['qwen_size']} dim={dim} device={device}")
 
+    total_lines = sum(1 for _ in input_path.open("r", encoding="utf-8") if _.strip())
+    print(f"[test] {total_lines} records in {input_path}")
+
     results: list[dict] = []
     errors: list[dict] = []
+    running_correct = 0
 
-    for line_no, record in iter_jsonl_records(input_path):
+    pbar = tqdm(
+        iter_jsonl_records(input_path),
+        total=total_lines,
+        desc="evaluating",
+        unit="rec",
+    )
+    for line_no, record in pbar:
         try:
             user, expected = normalize_record(record)
             prediction = predict_user(user, clf, tokenizer, emb_model, device)
             predicted_is_bot = prediction["label"] == "bot"
+            correct = predicted_is_bot == expected
+            running_correct += int(correct)
             results.append({
                 "line": line_no,
                 "expected_is_bot": expected,
@@ -81,10 +95,15 @@ def main():
                 "predicted_is_bot": predicted_is_bot,
                 "predicted_label": prediction["label"],
                 "confidence": prediction["confidence"],
-                "correct": predicted_is_bot == expected,
+                "correct": correct,
             })
         except Exception as e:
             errors.append({"line": line_no, "error": str(e)})
+        done = len(results) + len(errors)
+        if done:
+            pbar.set_postfix(acc=f"{running_correct / max(1, len(results)):.3f}",
+                             err=len(errors))
+    pbar.close()
 
     output = {
         "success": True,

@@ -2,11 +2,12 @@
 import argparse
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from preprocess import extract_properties, NORMALIZATION_CONFIG, BOOL_FIELDS, PROPERTY_DIM
 from utils.device import resolve_device
@@ -54,12 +55,14 @@ def main() -> int:
     print(f"[build] qwen_size={args.qwen_size} dim={dim}")
 
     records: list[dict] = []
-    for _, rec in iter_jsonl_records(jsonl_path):
-        records.append(rec)
-        if args.dry_run and len(records) >= 10:
-            break
-        if args.limit is not None and len(records) >= args.limit:
-            break
+    with tqdm(desc="loading jsonl", unit="rec") as pbar:
+        for _, rec in iter_jsonl_records(jsonl_path):
+            records.append(rec)
+            pbar.update(1)
+            if args.dry_run and len(records) >= 10:
+                break
+            if args.limit is not None and len(records) >= args.limit:
+                break
 
     n = len(records)
     if n == 0:
@@ -71,7 +74,10 @@ def main() -> int:
         if "label" not in r:
             raise ValueError("record missing 'label' field")
 
-    props = np.stack([extract_properties(r) for r in records])  # (n, 20)
+    props = np.stack([
+        extract_properties(r)
+        for r in tqdm(records, desc="extracting props", unit="user")
+    ])  # (n, 20)
     users_tweets = [
         [t for t in r.get("tweets", []) if isinstance(t, str) and t.strip()]
         for r in records
@@ -121,7 +127,7 @@ def main() -> int:
         "device": str(device),
         "limit": args.limit,
         "label_distribution": {"human": n_human, "bot": n_bot},
-        "build_timestamp": datetime.utcnow().isoformat() + "Z",
+        "build_timestamp": datetime.now(timezone.utc).isoformat(),
         "normalization": NORMALIZATION_CONFIG,
         "bool_fields": BOOL_FIELDS,
     }
