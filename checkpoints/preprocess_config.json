@@ -1,0 +1,84 @@
+{
+  "qwen_size": "8B",
+  "embedding_dim": 4096,
+  "property_dim": 20,
+  "feature_dim": 4116,
+  "normalization": {
+    "followers_count": {
+      "col": 3,
+      "min": 0.0,
+      "max": 25.572674,
+      "log": true
+    },
+    "friends_count": {
+      "col": 5,
+      "min": 0.0,
+      "max": 21.029877,
+      "log": true
+    },
+    "listed_count": {
+      "col": 6,
+      "min": 0.0,
+      "max": 17.675406,
+      "log": true
+    },
+    "created_at": {
+      "col": 7,
+      "min": 36.553529,
+      "max": 51.711108,
+      "log": true
+    },
+    "favourites_count": {
+      "col": 9,
+      "min": 0.0,
+      "max": 19.711042,
+      "log": true
+    },
+    "statuses_count": {
+      "col": 10,
+      "min": 0.0,
+      "max": 20.386231,
+      "log": true
+    },
+    "screen_name_length": {
+      "col": 11,
+      "min": 3.0,
+      "max": 15.0,
+      "log": false
+    },
+    "name_length": {
+      "col": 12,
+      "min": 1.0,
+      "max": 50.0,
+      "log": false
+    },
+    "description_length": {
+      "col": 13,
+      "min": 0.0,
+      "max": 204.0,
+      "log": false
+    },
+    "followers_friends_ratios": {
+      "col": 14,
+      "min": 0.0,
+      "max": 11.169299,
+      "log": true
+    }
+  },
+  "bool_fields": {
+    "protected": 0,
+    "verified": 1,
+    "default_profile_image": 2,
+    "geo_enabled": 4,
+    "contributors_enabled": 8,
+    "default_profile": 15,
+    "has_url": 16,
+    "has_description": 17,
+    "has_location": 18
+  },
+  "n_estimators": 50,
+  "learning_rate": 1.0,
+  "best_seed": 2,
+  "trained_samples": 9228,
+  "dataset_dir": "Dataset/split20"
+}
