@@ -23,6 +23,19 @@ MAX_LENGTH = 512
 _cache: dict[str, tuple[AutoTokenizer, AutoModel, int]] = {}
 
 
+def _resolve_torch_dtype(device: torch.device):
+    if device.type == "cuda":
+        return torch.bfloat16
+    cpu_dtype = os.getenv("BOT_CPU_EMBEDDING_DTYPE", "float32").lower()
+    if cpu_dtype in {"bfloat16", "bf16"}:
+        return torch.bfloat16
+    if cpu_dtype in {"float32", "fp32"}:
+        return torch.float32
+    raise ValueError(
+        "BOT_CPU_EMBEDDING_DTYPE must be one of: float32, fp32, bfloat16, bf16"
+    )
+
+
 def _local_path(qwen_size: str) -> Path:
     if qwen_size not in QWEN_SIZES:
         raise ValueError(
@@ -47,11 +60,15 @@ def load_embedding(
         )
 
     tokenizer = AutoTokenizer.from_pretrained(str(local), padding_side="left")
-    dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+    dtype = _resolve_torch_dtype(device)
     try:
-        model = AutoModel.from_pretrained(str(local), dtype=dtype)
+        model = AutoModel.from_pretrained(str(local), dtype=dtype, low_cpu_mem_usage=True)
     except TypeError:
-        model = AutoModel.from_pretrained(str(local), torch_dtype=dtype)
+        model = AutoModel.from_pretrained(
+            str(local),
+            torch_dtype=dtype,
+            low_cpu_mem_usage=True,
+        )
     model.eval()
     model.to(device)
 

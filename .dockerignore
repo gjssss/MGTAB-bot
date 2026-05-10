@@ -28,11 +28,9 @@ tmp/
 # Logs
 *.log
 
-# Large data files (mount via volume)
+# Large data files
 Dataset/
+raw_data/
 data/
 Standardization/
 test_samples/
-
-# Lock file (use uv.lock from build context)
-uv.lock

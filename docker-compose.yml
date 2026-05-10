@@ -9,10 +9,7 @@ services:
       - "30102:30102"
     environment:
       - BOT_PORT=30102
-      - BOT_DEVICE=cuda
-    volumes:
-      # Mount Dataset directory (large files not included in image)
-      - ./Dataset:/app/Dataset:ro
+      - BOT_DEVICE=auto
     deploy:
       resources:
         reservations:
@@ -40,8 +37,6 @@ services:
     environment:
       - BOT_PORT=30102
       - BOT_DEVICE=cpu
-    volumes:
-      - ./Dataset:/app/Dataset:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:30102/health"]

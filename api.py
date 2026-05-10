@@ -8,6 +8,7 @@ import warnings
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message=".*not sharded.*")
+logger = logging.getLogger(__name__)
 
 from contextlib import asynccontextmanager
 
@@ -24,12 +25,47 @@ from utils.inference import load_classifier, predict_user
 _runtime: dict = {}
 
 
+def _validate_runtime(cfg: dict, clf, dim: int) -> None:
+    cfg_embedding_dim = int(cfg["embedding_dim"])
+    cfg_property_dim = int(cfg["property_dim"])
+    cfg_feature_dim = int(cfg["feature_dim"])
+
+    if dim != cfg_embedding_dim:
+        raise RuntimeError(
+            f"Embedding dim mismatch: config expects {cfg_embedding_dim}, loaded {dim}."
+        )
+    expected_feature_dim = cfg_property_dim + dim
+    if cfg_feature_dim != expected_feature_dim:
+        raise RuntimeError(
+            f"Feature dim mismatch: config feature_dim={cfg_feature_dim}, "
+            f"property_dim + embedding_dim={expected_feature_dim}."
+        )
+    clf_feature_dim = getattr(clf, "n_features_in_", None)
+    if clf_feature_dim is not None and int(clf_feature_dim) != cfg_feature_dim:
+        raise RuntimeError(
+            f"Classifier dim mismatch: classifier expects {clf_feature_dim}, "
+            f"config feature_dim={cfg_feature_dim}."
+        )
+
+
+def _resolve_runtime_device():
+    preferred = os.getenv("BOT_DEVICE", "auto")
+    try:
+        return resolve_device(preferred)
+    except RuntimeError:
+        if preferred == "cuda":
+            logger.warning("CUDA requested but not available, falling back to CPU")
+            return resolve_device("cpu")
+        raise
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     cfg = load_preprocess_config()
-    device = resolve_device("auto")
+    device = _resolve_runtime_device()
     clf = load_classifier()
     tokenizer, emb_model, dim = load_embedding(cfg["qwen_size"], device)
+    _validate_runtime(cfg, clf, dim)
     _runtime.update(
         cfg=cfg, device=device, clf=clf, tokenizer=tokenizer, emb_model=emb_model, dim=dim
     )

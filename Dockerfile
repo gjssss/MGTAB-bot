@@ -1,4 +1,5 @@
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+ARG BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -8,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TRANSFORMERS_NO_ADVISORY_WARNINGS=1 \
     HF_HUB_DISABLE_TELEMETRY=1
 
-RUN sed -i '/jammy-backports/d' /etc/apt/sources.list \
+RUN if [ -f /etc/apt/sources.list ]; then sed -i '/jammy-backports/d' /etc/apt/sources.list; fi \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -20,29 +21,30 @@ RUN sed -i '/jammy-backports/d' /etc/apt/sources.list \
 
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 
-RUN python3 -m pip install --no-cache-dir uv
+RUN python3 -m venv /opt/uv \
+    && /opt/uv/bin/pip install --no-cache-dir uv \
+    && ln -sf /opt/uv/bin/uv /usr/local/bin/uv
 
 WORKDIR /app
 
+ARG MODELS_DIR=models
+ARG CHECKPOINTS_DIR=checkpoints
+
 # Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --python 3.12
 
 # Copy application code
-COPY api.py predict.py test.py preprocess.py ./
-COPY train_adaboost.py build_dataset.py download.py ./
+COPY api.py predict.py preprocess.py ./
 COPY utils/ ./utils/
 
 # Copy models and checkpoints (for offline usage)
-COPY models/ ./models/
-COPY checkpoints/ ./checkpoints/
+COPY ${MODELS_DIR}/ ./models/
+COPY ${CHECKPOINTS_DIR}/ ./checkpoints/
 
 # Copy entrypoint
 COPY docker/entrypoint.sh /usr/local/bin/mgtab2-entrypoint
 RUN chmod +x /usr/local/bin/mgtab2-entrypoint
-
-# Create Dataset directory for volume mount
-RUN mkdir -p /app/Dataset
 
 EXPOSE 30102
 

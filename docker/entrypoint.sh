@@ -24,10 +24,10 @@ check_dir /app/checkpoints
 
 # Configuration via environment variables
 export BOT_PORT="${BOT_PORT:-30102}"
-export BOT_DEVICE="${BOT_DEVICE:-cuda}"
+export BOT_DEVICE="${BOT_DEVICE:-auto}"
 
 # Validate device
-if [ "$BOT_DEVICE" = "cuda" ] && ! python -c "import torch; torch.cuda.is_available()" 2>/dev/null; then
+if [ "$BOT_DEVICE" = "cuda" ] && ! /app/.venv/bin/python -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
     echo "Warning: CUDA requested but not available, falling back to CPU"
     export BOT_DEVICE="cpu"
 fi
