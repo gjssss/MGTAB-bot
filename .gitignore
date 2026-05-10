@@ -2,7 +2,7 @@
 .vscode/
 
 # Dataset files (large)
-Dataset
+Dataset/**/*
 
 # Python
 __pycache__/
@@ -16,9 +16,9 @@ build/
 uv.lock
 
 # Embedding models (large, download locally)
-models/
+models/**/*
 
 # Test samples
 test_samples/
 
-raw_data
+raw_data/**/*
