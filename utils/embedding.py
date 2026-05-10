@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -8,16 +7,11 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 
+from .constants import MODELS_DIR, QWEN_SIZES
+
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
-QWEN_SIZES: dict[str, dict] = {
-    "0.6B": {"repo": "Qwen/Qwen3-Embedding-0.6B", "dir": "Qwen3-Embedding-0.6B", "dim": 1024},
-    "4B":   {"repo": "Qwen/Qwen3-Embedding-4B",   "dir": "Qwen3-Embedding-4B",   "dim": 2560},
-    "8B":   {"repo": "Qwen/Qwen3-Embedding-8B",   "dir": "Qwen3-Embedding-8B",   "dim": 4096},
-}
-
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MAX_LENGTH = 512
 
 _cache: dict[str, tuple[AutoTokenizer, AutoModel, int]] = {}

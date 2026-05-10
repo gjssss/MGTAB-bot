@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from utils.embedding import QWEN_SIZES, MODELS_DIR
+from utils.constants import MODELS_DIR, QWEN_SIZES
 
 
 PROXY_ENV_KEYS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
