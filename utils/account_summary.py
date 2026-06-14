@@ -1,0 +1,109 @@
+"""Account-level metrics used by deterministic and LLM explanations."""
+
+from datetime import datetime, timezone
+from typing import Any
+
+
+def _to_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_created_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    raw = value.strip()
+    formats = (
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%a %b %d %H:%M:%S %z %Y",
+    )
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def account_age_days(user: dict, now: datetime | None = None) -> int:
+    created = _parse_created_at(user.get("created_at"))
+    if created is None:
+        return 0
+
+    resolved_now = now or datetime.now(timezone.utc)
+    if resolved_now.tzinfo is None:
+        resolved_now = resolved_now.replace(tzinfo=timezone.utc)
+    delta = resolved_now.astimezone(timezone.utc) - created
+    return max(0, delta.days)
+
+
+def build_account_metrics(user: dict, now: datetime | None = None) -> dict:
+    followers = _to_int(user.get("followers_count"))
+    friends = _to_int(user.get("friends_count"))
+    tweets = user.get("tweets", [])
+    if not isinstance(tweets, list):
+        tweets = []
+
+    return {
+        "followers_count": followers,
+        "friends_count": friends,
+        "listed_count": _to_int(user.get("listed_count")),
+        "favourites_count": _to_int(user.get("favourites_count")),
+        "statuses_count": _to_int(user.get("statuses_count")),
+        "followers_friends_ratio": round(followers / (friends + 1), 4),
+        "tweet_count": len([item for item in tweets if isinstance(item, str) and item.strip()]),
+        "account_age_days": account_age_days(user, now=now),
+        "verified": bool(user.get("verified", False)),
+        "protected": bool(user.get("protected", False)),
+        "default_profile_image": bool(user.get("default_profile_image", False)),
+        "default_profile": bool(user.get("default_profile", False)),
+    }
+
+
+def build_prompt_context(user: dict, prediction: dict) -> dict:
+    tweets = user.get("tweets", [])
+    if not isinstance(tweets, list):
+        tweets = []
+
+    tweet_samples = [
+        item.strip()[:280]
+        for item in tweets
+        if isinstance(item, str) and item.strip()
+    ][:5]
+
+    return {
+        "prediction": {
+            "label": prediction.get("label"),
+            "confidence": prediction.get("confidence"),
+            "probabilities": prediction.get("probabilities", {}),
+        },
+        "account_metrics": build_account_metrics(user),
+        "profile": {
+            "screen_name": user.get("screen_name", ""),
+            "name": user.get("name", ""),
+            "description": user.get("description", ""),
+            "location": user.get("location", ""),
+            "has_url": bool(user.get("url")),
+            "has_description": bool(user.get("description")),
+            "has_location": bool(user.get("location")),
+        },
+        "tweet_samples": tweet_samples,
+    }

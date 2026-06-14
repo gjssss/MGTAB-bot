@@ -12,6 +12,7 @@ dependencies = [
     "huggingface-hub>=0.23",
     "sentencepiece",
     "joblib",
+    "requests",
     "fastapi",
     "uvicorn[standard]",
     "tqdm",

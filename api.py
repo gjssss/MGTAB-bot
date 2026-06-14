@@ -20,6 +20,7 @@ from utils.config import load_preprocess_config
 from utils.device import resolve_device
 from utils.embedding import load_embedding
 from utils.inference import load_classifier, predict_user
+from utils.llm_analysis import LLMAnalyzer, error_analysis
 
 
 _runtime: dict = {}
@@ -67,7 +68,13 @@ async def lifespan(_app: FastAPI):
     tokenizer, emb_model, dim = load_embedding(cfg["qwen_size"], device)
     _validate_runtime(cfg, clf, dim)
     _runtime.update(
-        cfg=cfg, device=device, clf=clf, tokenizer=tokenizer, emb_model=emb_model, dim=dim
+        cfg=cfg,
+        device=device,
+        clf=clf,
+        tokenizer=tokenizer,
+        emb_model=emb_model,
+        dim=dim,
+        llm_analyzer=LLMAnalyzer(),
     )
     yield
 
@@ -89,6 +96,23 @@ def predict_single(user: dict) -> dict:
         _runtime["emb_model"],
         _runtime["device"],
     )
+
+
+def add_optional_analysis(result: dict, user: dict, include_analysis: bool) -> dict:
+    if not include_analysis:
+        return result
+
+    enriched = dict(result)
+    analyzer = _runtime.get("llm_analyzer")
+    if not isinstance(analyzer, LLMAnalyzer):
+        enriched["analysis"] = error_analysis(user, result, "LLM 分析器未初始化")
+        return enriched
+
+    try:
+        enriched["analysis"] = analyzer.analyze_prediction(user, result)
+    except Exception as exc:
+        enriched["analysis"] = error_analysis(user, result, str(exc))
+    return enriched
 
 
 class UserProfile(BaseModel):
@@ -126,6 +150,12 @@ class BatchRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    llm_analyzer = _runtime.get("llm_analyzer")
+    llm_status = (
+        llm_analyzer.public_status()
+        if isinstance(llm_analyzer, LLMAnalyzer)
+        else {"enabled": False, "configured": False, "model": None}
+    )
     return {
         "success": True,
         "message": "ok",
@@ -137,26 +167,31 @@ def health():
                 "qwen_size": _runtime.get("cfg", {}).get("qwen_size"),
                 "embedding_dim": _runtime.get("dim"),
             },
+            "llm": llm_status,
         },
     }
 
 
 @app.post("/bot")
-def detect_single(req: SingleRequest):
+def detect_single(req: SingleRequest, include_analysis: bool = False):
     try:
-        result = predict_single(req.user.model_dump())
+        user = req.user.model_dump()
+        result = predict_single(user)
+        result = add_optional_analysis(result, user, include_analysis)
         return {"success": True, "message": "ok", "data": result}
     except Exception as e:
         return {"success": False, "message": str(e), "data": None}
 
 
 @app.post("/bot/batch")
-def detect_batch(req: BatchRequest):
+def detect_batch(req: BatchRequest, include_analysis: bool = False):
     results = []
     errors = []
     for i, user in enumerate(req.items):
         try:
-            r = predict_single(user.model_dump())
+            user_payload = user.model_dump()
+            r = predict_single(user_payload)
+            r = add_optional_analysis(r, user_payload, include_analysis)
             r["index"] = i
             results.append(r)
         except Exception as e:
