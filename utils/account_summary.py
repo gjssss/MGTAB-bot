@@ -13,6 +13,13 @@ def _to_int(value: Any) -> int:
         return 0
 
 
+def _optional_int(user: dict, keys: tuple[str, ...]) -> tuple[int | None, str | None]:
+    for key in keys:
+        if key in user and user.get(key) is not None:
+            return _to_int(user.get(key)), key
+    return None, None
+
+
 def _parse_created_at(value: Any) -> datetime | None:
     if value is None:
         return None
@@ -78,6 +85,77 @@ def build_account_metrics(user: dict, now: datetime | None = None) -> dict:
     }
 
 
+def build_behavior_metrics(user: dict, now: datetime | None = None) -> dict:
+    followers = _to_int(user.get("followers_count"))
+    friends = _to_int(user.get("friends_count"))
+    favourites = _to_int(user.get("favourites_count"))
+    statuses = _to_int(user.get("statuses_count"))
+    listed = _to_int(user.get("listed_count"))
+    age_days = account_age_days(user, now=now)
+    tweets = user.get("tweets", [])
+    if not isinstance(tweets, list):
+        tweets = []
+    sample_tweet_count = len(
+        [item for item in tweets if isinstance(item, str) and item.strip()]
+    )
+    comments, comment_field = _optional_int(
+        user,
+        (
+            "comment_count",
+            "comments_count",
+            "reply_count",
+            "replies_count",
+            "reply_statuses_count",
+        ),
+    )
+
+    def per_day(value: int | None) -> float | None:
+        if value is None or age_days <= 0:
+            return None
+        return round(value / age_days, 4)
+
+    return {
+        "like_behavior": {
+            "favourites_count": favourites,
+            "likes_per_day": per_day(favourites),
+            "likes_per_post": round(favourites / (statuses + 1), 4),
+        },
+        "comment_behavior": {
+            "data_available": comments is not None,
+            "source_field": comment_field,
+            "comment_count": comments,
+            "comments_per_day": per_day(comments),
+            "comments_per_post": (
+                round(comments / (statuses + 1), 4)
+                if comments is not None
+                else None
+            ),
+        },
+        "posting_behavior": {
+            "statuses_count": statuses,
+            "posts_per_day": per_day(statuses),
+            "sample_tweet_count": sample_tweet_count,
+        },
+        "follow_behavior": {
+            "followers_count": followers,
+            "friends_count": friends,
+            "listed_count": listed,
+            "following_to_followers_ratio": round(friends / (followers + 1), 4),
+            "followers_friends_ratio": round(followers / (friends + 1), 4),
+        },
+        "profile_behavior": {
+            "account_age_days": age_days,
+            "verified": bool(user.get("verified", False)),
+            "protected": bool(user.get("protected", False)),
+            "default_profile_image": bool(user.get("default_profile_image", False)),
+            "default_profile": bool(user.get("default_profile", False)),
+            "has_url": bool(user.get("url")),
+            "has_description": bool(user.get("description")),
+            "has_location": bool(user.get("location")),
+        },
+    }
+
+
 def build_prompt_context(user: dict, prediction: dict) -> dict:
     tweets = user.get("tweets", [])
     if not isinstance(tweets, list):
@@ -96,6 +174,7 @@ def build_prompt_context(user: dict, prediction: dict) -> dict:
             "probabilities": prediction.get("probabilities", {}),
         },
         "account_metrics": build_account_metrics(user),
+        "behavior_metrics": build_behavior_metrics(user),
         "profile": {
             "screen_name": user.get("screen_name", ""),
             "name": user.get("name", ""),

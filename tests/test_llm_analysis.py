@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from utils.account_summary import build_account_metrics
+from utils.account_summary import build_account_metrics, build_behavior_metrics
 from utils.llm_analysis import LLMAnalyzer
 from utils.llm_config import LLMConfig
 
@@ -36,6 +36,39 @@ class AccountSummaryTests(unittest.TestCase):
         self.assertTrue(metrics["verified"])
         self.assertTrue(metrics["default_profile_image"])
 
+    def test_build_behavior_metrics_groups_activity_dimensions(self):
+        user = {
+            "followers_count": 12,
+            "friends_count": 4980,
+            "listed_count": 0,
+            "favourites_count": 60,
+            "statuses_count": 120,
+            "reply_count": 30,
+            "created_at": "2024-01-01T00:00:00Z",
+            "default_profile_image": True,
+            "default_profile": True,
+            "tweets": ["promo", "follow me"],
+        }
+
+        metrics = build_behavior_metrics(
+            user, now=datetime(2024, 1, 11, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(metrics["like_behavior"]["favourites_count"], 60)
+        self.assertEqual(metrics["like_behavior"]["likes_per_day"], 6.0)
+        self.assertEqual(metrics["comment_behavior"]["comment_count"], 30)
+        self.assertEqual(metrics["comment_behavior"]["source_field"], "reply_count")
+        self.assertEqual(metrics["posting_behavior"]["posts_per_day"], 12.0)
+        self.assertEqual(
+            metrics["follow_behavior"]["following_to_followers_ratio"], 383.0769
+        )
+
+    def test_missing_comment_metrics_are_marked_unavailable(self):
+        metrics = build_behavior_metrics({"statuses_count": 10})
+
+        self.assertFalse(metrics["comment_behavior"]["data_available"])
+        self.assertIsNone(metrics["comment_behavior"]["comment_count"])
+
 
 class LLMAnalysisTests(unittest.TestCase):
     def setUp(self):
@@ -65,6 +98,11 @@ class LLMAnalysisTests(unittest.TestCase):
     def test_parse_wrapped_json_response(self):
         parsed = self.analyzer._parse_response(
             '分析如下：{"risk_level":"high","summary":"风险较高",'
+            '"behavior_anomalies":{"like_behavior":["点赞少"],'
+            '"comment_behavior":["评论数据未提供"],'
+            '"posting_behavior":["发帖数少"],'
+            '"follow_behavior":["关注多"],'
+            '"profile_behavior":["资料少"]},'
             '"key_factors":["发帖数少"],"content_signals":["样本少"],'
             '"recommendations":["人工复核"]}'
         )
@@ -75,8 +113,21 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertEqual(normalized["status"], "success")
         self.assertEqual(normalized["risk_level"], "high")
         self.assertEqual(normalized["summary"], "风险较高")
+        self.assertEqual(
+            normalized["behavior_anomalies"]["comment_behavior"],
+            ["评论数据未提供"],
+        )
         self.assertEqual(normalized["key_factors"], ["发帖数少"])
         self.assertIn("account_metrics", normalized)
+        self.assertIn("behavior_metrics", normalized)
+
+    def test_build_prompt_requires_behavior_anomaly_analysis(self):
+        prompt = self.analyzer._build_prompt(self.user, self.prediction)
+
+        self.assertIn("账号异常行为", prompt)
+        self.assertIn("like_behavior", prompt)
+        self.assertIn("comment_behavior", prompt)
+        self.assertIn("评论/回复数据未提供，无法判断", prompt)
 
     def test_invalid_json_response_raises(self):
         with self.assertRaises(ValueError):

@@ -4,11 +4,22 @@ import json
 import time
 from typing import Any
 
-from .account_summary import build_account_metrics, build_prompt_context
+from .account_summary import (
+    build_account_metrics,
+    build_behavior_metrics,
+    build_prompt_context,
+)
 from .llm_config import LLMConfig
 
 
 VALID_RISK_LEVELS = {"low", "medium", "high"}
+BEHAVIOR_ANALYSIS_KEYS = (
+    "like_behavior",
+    "comment_behavior",
+    "posting_behavior",
+    "follow_behavior",
+    "profile_behavior",
+)
 
 
 def _as_list(value: Any) -> list[str]:
@@ -17,6 +28,16 @@ def _as_list(value: Any) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _empty_behavior_anomalies() -> dict[str, list[str]]:
+    return {key: [] for key in BEHAVIOR_ANALYSIS_KEYS}
+
+
+def _as_behavior_anomalies(value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return _empty_behavior_anomalies()
+    return {key: _as_list(value.get(key)) for key in BEHAVIOR_ANALYSIS_KEYS}
 
 
 def _risk_from_prediction(prediction: dict) -> str:
@@ -41,6 +62,8 @@ def _base_analysis(status: str, user: dict, prediction: dict, summary: str) -> d
         "risk_level": _risk_from_prediction(prediction),
         "summary": summary,
         "account_metrics": build_account_metrics(user),
+        "behavior_metrics": build_behavior_metrics(user),
+        "behavior_anomalies": _empty_behavior_anomalies(),
         "key_factors": [],
         "content_signals": [],
         "recommendations": [],
@@ -83,7 +106,7 @@ class LLMAnalyzer:
     def _build_prompt(self, user: dict, prediction: dict) -> str:
         context = build_prompt_context(user, prediction)
         context_json = json.dumps(context, ensure_ascii=False, indent=2)
-        return f"""请基于以下机器人账号检测结果和账号资料，生成中文结构化解读。
+        return f"""请基于以下机器人账号检测结果和账号行为数据，生成中文结构化异常行为分析。
 
 输入数据：
 {context_json}
@@ -91,12 +114,26 @@ class LLMAnalyzer:
 要求：
 1. 只依据输入数据解释，不引用或假设外部事实。
 2. 不输出思维链、隐藏推理或内部分析过程。
-3. 重点解释预测标签、置信度、点赞数、发帖数、粉丝数、关注数、粉关比、账号年龄、认证状态、默认头像/主页、资料完整度和推文内容信号。
-4. 输出必须是 JSON 对象，且只包含以下字段：
+3. 分析重点必须放在账号异常行为上，而不是泛泛复述账号资料。
+4. 必须逐项分析以下维度，并在每条结论中引用输入字段或指标作为依据：
+   - like_behavior：点赞行为，重点看 favourites_count、likes_per_day、likes_per_post。
+   - comment_behavior：评论/回复行为，重点看 comment_count、comments_per_day、comments_per_post；如果 data_available=false，必须写明“评论/回复数据未提供，无法判断”，不得编造。
+   - posting_behavior：发帖行为，重点看 statuses_count、posts_per_day、sample_tweet_count 和推文样本是否重复、广告化、诱导关注或链接导流。
+   - follow_behavior：关注行为，重点看 friends_count、followers_count、following_to_followers_ratio、followers_friends_ratio、listed_count。
+   - profile_behavior：资料行为，重点看账号年龄、认证状态、默认头像/主页、简介、位置和链接完整度。
+5. key_factors 应优先列出由行为数据支持的异常点；content_signals 只描述推文样本中可见的内容信号。
+6. 输出必须是 JSON 对象，且只包含以下字段：
 {{
   "risk_level": "low|medium|high",
-  "summary": "一句话结论",
-  "key_factors": ["影响判断的账号特征"],
+  "summary": "一句话概括账号异常行为风险",
+  "behavior_anomalies": {{
+    "like_behavior": ["点赞行为异常或正常的证据"],
+    "comment_behavior": ["评论/回复行为异常、正常或数据不足的证据"],
+    "posting_behavior": ["发帖行为异常或正常的证据"],
+    "follow_behavior": ["关注行为异常或正常的证据"],
+    "profile_behavior": ["资料行为异常或正常的证据"]
+  }},
+  "key_factors": ["影响判断的行为特征"],
   "content_signals": ["推文内容层面的信号"],
   "recommendations": ["处置或复核建议"]
 }}"""
@@ -186,6 +223,10 @@ class LLMAnalyzer:
             "risk_level": risk_level,
             "summary": summary,
             "account_metrics": build_account_metrics(user),
+            "behavior_metrics": build_behavior_metrics(user),
+            "behavior_anomalies": _as_behavior_anomalies(
+                parsed.get("behavior_anomalies")
+            ),
             "key_factors": _as_list(parsed.get("key_factors")),
             "content_signals": _as_list(parsed.get("content_signals")),
             "recommendations": _as_list(parsed.get("recommendations")),
