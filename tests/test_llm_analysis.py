@@ -43,7 +43,6 @@ class AccountSummaryTests(unittest.TestCase):
             "listed_count": 0,
             "favourites_count": 60,
             "statuses_count": 120,
-            "reply_count": 30,
             "created_at": "2024-01-01T00:00:00Z",
             "default_profile_image": True,
             "default_profile": True,
@@ -55,19 +54,11 @@ class AccountSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(metrics["like_behavior"]["favourites_count"], 60)
-        self.assertIsNone(metrics["comment_behavior"]["comment_count"])
-        self.assertEqual(metrics["comment_behavior"]["reply_count"], 30)
         self.assertEqual(metrics["posting_behavior"]["statuses_count"], 120)
         self.assertEqual(metrics["follow_behavior"]["friends_count"], 4980)
         self.assertEqual(
             metrics["profile_behavior"]["created_at"], "2024-01-01T00:00:00Z"
         )
-
-    def test_missing_comment_metrics_are_marked_unavailable(self):
-        metrics = build_behavior_metrics({"statuses_count": 10})
-
-        self.assertIsNone(metrics["comment_behavior"]["comment_count"])
-        self.assertIsNone(metrics["comment_behavior"]["reply_count"])
 
 
 class LLMAnalysisTests(unittest.TestCase):
@@ -99,7 +90,6 @@ class LLMAnalysisTests(unittest.TestCase):
         parsed = self.analyzer._parse_response(
             '分析如下：{"risk_level":"high","summary":"风险较高",'
             '"behavior_anomalies":{"like_behavior":["点赞少"],'
-            '"comment_behavior":["评论数据未提供"],'
             '"posting_behavior":["发帖数少"],'
             '"follow_behavior":["关注多"],'
             '"profile_behavior":["资料少"]},'
@@ -113,21 +103,53 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertEqual(normalized["status"], "success")
         self.assertEqual(normalized["risk_level"], "high")
         self.assertEqual(normalized["summary"], "风险较高")
-        self.assertEqual(
-            normalized["behavior_anomalies"]["comment_behavior"],
-            ["评论数据未提供"],
-        )
+        self.assertNotIn("comment_behavior", normalized["behavior_anomalies"])
         self.assertEqual(normalized["key_factors"], ["发帖数少"])
         self.assertIn("account_metrics", normalized)
         self.assertIn("behavior_metrics", normalized)
+
+    def test_output_parameter_names_are_replaced_with_chinese_labels(self):
+        parsed = self.analyzer._parse_response(
+            '{"risk_level":"medium",'
+            '"summary":"favourites_count 异常且 statuses_count 偏高",'
+            '"behavior_anomalies":{"like_behavior":["favourites_count 很低"],'
+            '"posting_behavior":["statuses_count 很高"],'
+            '"follow_behavior":["friends_count 明显高于 followers_count"],'
+            '"profile_behavior":["created_at 较新"]},'
+            '"key_factors":["listed_count 很低"],'
+            '"content_signals":["样本含导流"],'
+            '"recommendations":["复核 screen_name"]}'
+        )
+
+        normalized = self.analyzer._normalize_result(
+            parsed, self.user, self.prediction
+        )
+
+        rendered = " ".join(
+            [
+                normalized["summary"],
+                *normalized["behavior_anomalies"]["like_behavior"],
+                *normalized["behavior_anomalies"]["posting_behavior"],
+                *normalized["behavior_anomalies"]["follow_behavior"],
+                *normalized["behavior_anomalies"]["profile_behavior"],
+                *normalized["key_factors"],
+                *normalized["content_signals"],
+                *normalized["recommendations"],
+            ]
+        )
+        self.assertNotIn("favourites_count", rendered)
+        self.assertNotIn("statuses_count", rendered)
+        self.assertNotIn("friends_count", rendered)
+        self.assertIn("点赞数", normalized["summary"])
+        self.assertIn("发帖数", normalized["summary"])
 
     def test_build_prompt_requires_behavior_anomaly_analysis(self):
         prompt = self.analyzer._build_prompt(self.user, self.prediction)
 
         self.assertIn("账号异常行为", prompt)
         self.assertIn("like_behavior", prompt)
-        self.assertIn("comment_behavior", prompt)
-        self.assertIn("评论/回复数据未提供，无法判断", prompt)
+        self.assertNotIn("comment_behavior", prompt)
+        self.assertNotIn("评论/回复", prompt)
         self.assertNotIn("data_available", prompt)
         self.assertNotIn("source_field", prompt)
         self.assertNotIn("likes_per_day", prompt)

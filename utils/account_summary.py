@@ -13,12 +13,6 @@ def _to_int(value: Any) -> int:
         return 0
 
 
-def _optional_field_int(user: dict, key: str) -> int | None:
-    if key in user and user.get(key) is not None:
-        return _to_int(user.get(key))
-    return None
-
-
 def _raw_str(user: dict, key: str) -> str:
     value = user.get(key, "")
     return value if isinstance(value, str) else ""
@@ -99,15 +93,6 @@ def build_behavior_metrics(user: dict, now: datetime | None = None) -> dict:
     return {
         "like_behavior": {
             "favourites_count": favourites,
-        },
-        "comment_behavior": {
-            "comment_count": _optional_field_int(user, "comment_count"),
-            "comments_count": _optional_field_int(user, "comments_count"),
-            "reply_count": _optional_field_int(user, "reply_count"),
-            "replies_count": _optional_field_int(user, "replies_count"),
-            "reply_statuses_count": _optional_field_int(
-                user, "reply_statuses_count"
-            ),
         },
         "posting_behavior": {
             "statuses_count": statuses,

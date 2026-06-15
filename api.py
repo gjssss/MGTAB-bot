@@ -129,11 +129,6 @@ class UserProfile(BaseModel):
     listed_count: int = 0
     favourites_count: int = 0
     statuses_count: int = 0
-    comment_count: int | None = None
-    comments_count: int | None = None
-    reply_count: int | None = None
-    replies_count: int | None = None
-    reply_statuses_count: int | None = None
     created_at: str = ""
     screen_name: str = ""
     name: str = ""

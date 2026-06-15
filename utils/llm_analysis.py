@@ -15,18 +15,45 @@ from .llm_config import LLMConfig
 VALID_RISK_LEVELS = {"low", "medium", "high"}
 BEHAVIOR_ANALYSIS_KEYS = (
     "like_behavior",
-    "comment_behavior",
     "posting_behavior",
     "follow_behavior",
     "profile_behavior",
 )
 
+OUTPUT_FIELD_NAME_REPLACEMENTS = {
+    "favourites_count": "点赞数",
+    "statuses_count": "发帖数",
+    "followers_count": "粉丝数",
+    "friends_count": "关注数",
+    "listed_count": "列表数",
+    "created_at": "注册时间",
+    "default_profile_image": "默认头像",
+    "default_profile": "默认主页",
+    "screen_name": "用户名",
+    "description": "简介",
+    "location": "位置",
+    "url": "链接",
+    "verified": "认证状态",
+    "protected": "保护状态",
+}
+
+
+def _sanitize_output_text(value: str) -> str:
+    sanitized = value
+    for raw, label in OUTPUT_FIELD_NAME_REPLACEMENTS.items():
+        sanitized = sanitized.replace(raw, label)
+    return sanitized
+
 
 def _as_list(value: Any) -> list[str]:
     if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
+        return [
+            _sanitize_output_text(str(item).strip())
+            for item in value
+            if str(item).strip()
+        ]
     if isinstance(value, str) and value.strip():
-        return [value.strip()]
+        return [_sanitize_output_text(value.strip())]
     return []
 
 
@@ -115,20 +142,19 @@ class LLMAnalyzer:
 1. 只依据输入数据解释，不引用或假设外部事实。
 2. 不输出思维链、隐藏推理或内部分析过程。
 3. 分析重点必须放在账号异常行为上，而不是泛泛复述账号资料。
-4. 必须逐项分析以下维度，并在每条结论中引用接口输入字段作为依据；不要引用或创造未在输入中出现的派生指标。
-   - like_behavior：点赞行为，重点看 favourites_count。
-   - comment_behavior：评论/回复行为，重点看 comment_count、comments_count、reply_count、replies_count、reply_statuses_count；如果这些字段均为空，必须写明“评论/回复数据未提供，无法判断”，不得编造。
-   - posting_behavior：发帖行为，重点看 statuses_count 和推文样本是否重复、广告化、诱导关注或链接导流。
-   - follow_behavior：关注行为，重点看 friends_count、followers_count、listed_count。
-   - profile_behavior：资料行为，重点看 created_at、认证状态、默认头像/主页、简介、位置和链接完整度。
+4. 必须逐项分析以下维度，并在每条结论中引用接口输入值作为依据；不要引用或创造未在输入中出现的派生指标。
+   - like_behavior：点赞行为，重点看点赞数。
+   - posting_behavior：发帖行为，重点看发帖数和推文样本是否重复、广告化、诱导关注或链接导流。
+   - follow_behavior：关注行为，重点看关注数、粉丝数、列表数。
+   - profile_behavior：资料行为，重点看注册时间、认证状态、默认头像/主页、简介、位置和链接完整度。
 5. key_factors 应优先列出由行为数据支持的异常点；content_signals 只描述推文样本中可见的内容信号。
-6. 输出必须是 JSON 对象，且只包含以下字段：
+6. 输出的中文文本中禁止出现输入 JSON 的英文字段名；请使用“点赞数”“发帖数”“粉丝数”“关注数”“列表数”“注册时间”等中文名称。
+7. 输出必须是 JSON 对象，且只包含以下字段：
 {{
   "risk_level": "low|medium|high",
   "summary": "一句话概括账号异常行为风险",
   "behavior_anomalies": {{
     "like_behavior": ["点赞行为异常或正常的证据"],
-    "comment_behavior": ["评论/回复行为异常、正常或数据不足的证据"],
     "posting_behavior": ["发帖行为异常或正常的证据"],
     "follow_behavior": ["关注行为异常或正常的证据"],
     "profile_behavior": ["资料行为异常或正常的证据"]
@@ -214,7 +240,7 @@ class LLMAnalyzer:
         if risk_level not in VALID_RISK_LEVELS:
             risk_level = _risk_from_prediction(prediction)
 
-        summary = str(parsed.get("summary", "")).strip()
+        summary = _sanitize_output_text(str(parsed.get("summary", "")).strip())
         if not summary:
             raise ValueError("LLM JSON 缺少 summary")
 
