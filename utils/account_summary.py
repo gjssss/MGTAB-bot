@@ -13,11 +13,15 @@ def _to_int(value: Any) -> int:
         return 0
 
 
-def _optional_int(user: dict, keys: tuple[str, ...]) -> tuple[int | None, str | None]:
-    for key in keys:
-        if key in user and user.get(key) is not None:
-            return _to_int(user.get(key)), key
-    return None, None
+def _optional_field_int(user: dict, key: str) -> int | None:
+    if key in user and user.get(key) is not None:
+        return _to_int(user.get(key))
+    return None
+
+
+def _raw_str(user: dict, key: str) -> str:
+    value = user.get(key, "")
+    return value if isinstance(value, str) else ""
 
 
 def _parse_created_at(value: Any) -> datetime | None:
@@ -91,67 +95,37 @@ def build_behavior_metrics(user: dict, now: datetime | None = None) -> dict:
     favourites = _to_int(user.get("favourites_count"))
     statuses = _to_int(user.get("statuses_count"))
     listed = _to_int(user.get("listed_count"))
-    age_days = account_age_days(user, now=now)
-    tweets = user.get("tweets", [])
-    if not isinstance(tweets, list):
-        tweets = []
-    sample_tweet_count = len(
-        [item for item in tweets if isinstance(item, str) and item.strip()]
-    )
-    comments, comment_field = _optional_int(
-        user,
-        (
-            "comment_count",
-            "comments_count",
-            "reply_count",
-            "replies_count",
-            "reply_statuses_count",
-        ),
-    )
-
-    def per_day(value: int | None) -> float | None:
-        if value is None or age_days <= 0:
-            return None
-        return round(value / age_days, 4)
 
     return {
         "like_behavior": {
             "favourites_count": favourites,
-            "likes_per_day": per_day(favourites),
-            "likes_per_post": round(favourites / (statuses + 1), 4),
         },
         "comment_behavior": {
-            "data_available": comments is not None,
-            "source_field": comment_field,
-            "comment_count": comments,
-            "comments_per_day": per_day(comments),
-            "comments_per_post": (
-                round(comments / (statuses + 1), 4)
-                if comments is not None
-                else None
+            "comment_count": _optional_field_int(user, "comment_count"),
+            "comments_count": _optional_field_int(user, "comments_count"),
+            "reply_count": _optional_field_int(user, "reply_count"),
+            "replies_count": _optional_field_int(user, "replies_count"),
+            "reply_statuses_count": _optional_field_int(
+                user, "reply_statuses_count"
             ),
         },
         "posting_behavior": {
             "statuses_count": statuses,
-            "posts_per_day": per_day(statuses),
-            "sample_tweet_count": sample_tweet_count,
         },
         "follow_behavior": {
             "followers_count": followers,
             "friends_count": friends,
             "listed_count": listed,
-            "following_to_followers_ratio": round(friends / (followers + 1), 4),
-            "followers_friends_ratio": round(followers / (friends + 1), 4),
         },
         "profile_behavior": {
-            "account_age_days": age_days,
+            "created_at": _raw_str(user, "created_at"),
             "verified": bool(user.get("verified", False)),
             "protected": bool(user.get("protected", False)),
             "default_profile_image": bool(user.get("default_profile_image", False)),
             "default_profile": bool(user.get("default_profile", False)),
-            "has_url": bool(user.get("url")),
-            "has_description": bool(user.get("description")),
-            "has_location": bool(user.get("location")),
+            "url": _raw_str(user, "url"),
+            "description": _raw_str(user, "description"),
+            "location": _raw_str(user, "location"),
         },
     }
 
@@ -173,16 +147,13 @@ def build_prompt_context(user: dict, prediction: dict) -> dict:
             "confidence": prediction.get("confidence"),
             "probabilities": prediction.get("probabilities", {}),
         },
-        "account_metrics": build_account_metrics(user),
         "behavior_metrics": build_behavior_metrics(user),
         "profile": {
-            "screen_name": user.get("screen_name", ""),
-            "name": user.get("name", ""),
-            "description": user.get("description", ""),
-            "location": user.get("location", ""),
-            "has_url": bool(user.get("url")),
-            "has_description": bool(user.get("description")),
-            "has_location": bool(user.get("location")),
+            "screen_name": _raw_str(user, "screen_name"),
+            "name": _raw_str(user, "name"),
+            "description": _raw_str(user, "description"),
+            "location": _raw_str(user, "location"),
+            "url": _raw_str(user, "url"),
         },
         "tweet_samples": tweet_samples,
     }

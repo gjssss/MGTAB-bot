@@ -115,12 +115,12 @@ class LLMAnalyzer:
 1. 只依据输入数据解释，不引用或假设外部事实。
 2. 不输出思维链、隐藏推理或内部分析过程。
 3. 分析重点必须放在账号异常行为上，而不是泛泛复述账号资料。
-4. 必须逐项分析以下维度，并在每条结论中引用输入字段或指标作为依据：
-   - like_behavior：点赞行为，重点看 favourites_count、likes_per_day、likes_per_post。
-   - comment_behavior：评论/回复行为，重点看 comment_count、comments_per_day、comments_per_post；如果 data_available=false，必须写明“评论/回复数据未提供，无法判断”，不得编造。
-   - posting_behavior：发帖行为，重点看 statuses_count、posts_per_day、sample_tweet_count 和推文样本是否重复、广告化、诱导关注或链接导流。
-   - follow_behavior：关注行为，重点看 friends_count、followers_count、following_to_followers_ratio、followers_friends_ratio、listed_count。
-   - profile_behavior：资料行为，重点看账号年龄、认证状态、默认头像/主页、简介、位置和链接完整度。
+4. 必须逐项分析以下维度，并在每条结论中引用接口输入字段作为依据；不要引用或创造未在输入中出现的派生指标。
+   - like_behavior：点赞行为，重点看 favourites_count。
+   - comment_behavior：评论/回复行为，重点看 comment_count、comments_count、reply_count、replies_count、reply_statuses_count；如果这些字段均为空，必须写明“评论/回复数据未提供，无法判断”，不得编造。
+   - posting_behavior：发帖行为，重点看 statuses_count 和推文样本是否重复、广告化、诱导关注或链接导流。
+   - follow_behavior：关注行为，重点看 friends_count、followers_count、listed_count。
+   - profile_behavior：资料行为，重点看 created_at、认证状态、默认头像/主页、简介、位置和链接完整度。
 5. key_factors 应优先列出由行为数据支持的异常点；content_signals 只描述推文样本中可见的内容信号。
 6. 输出必须是 JSON 对象，且只包含以下字段：
 {{

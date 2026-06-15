@@ -55,19 +55,19 @@ class AccountSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(metrics["like_behavior"]["favourites_count"], 60)
-        self.assertEqual(metrics["like_behavior"]["likes_per_day"], 6.0)
-        self.assertEqual(metrics["comment_behavior"]["comment_count"], 30)
-        self.assertEqual(metrics["comment_behavior"]["source_field"], "reply_count")
-        self.assertEqual(metrics["posting_behavior"]["posts_per_day"], 12.0)
+        self.assertIsNone(metrics["comment_behavior"]["comment_count"])
+        self.assertEqual(metrics["comment_behavior"]["reply_count"], 30)
+        self.assertEqual(metrics["posting_behavior"]["statuses_count"], 120)
+        self.assertEqual(metrics["follow_behavior"]["friends_count"], 4980)
         self.assertEqual(
-            metrics["follow_behavior"]["following_to_followers_ratio"], 383.0769
+            metrics["profile_behavior"]["created_at"], "2024-01-01T00:00:00Z"
         )
 
     def test_missing_comment_metrics_are_marked_unavailable(self):
         metrics = build_behavior_metrics({"statuses_count": 10})
 
-        self.assertFalse(metrics["comment_behavior"]["data_available"])
         self.assertIsNone(metrics["comment_behavior"]["comment_count"])
+        self.assertIsNone(metrics["comment_behavior"]["reply_count"])
 
 
 class LLMAnalysisTests(unittest.TestCase):
@@ -128,6 +128,14 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertIn("like_behavior", prompt)
         self.assertIn("comment_behavior", prompt)
         self.assertIn("评论/回复数据未提供，无法判断", prompt)
+        self.assertNotIn("data_available", prompt)
+        self.assertNotIn("source_field", prompt)
+        self.assertNotIn("likes_per_day", prompt)
+        self.assertNotIn("likes_per_post", prompt)
+        self.assertNotIn("comments_per_day", prompt)
+        self.assertNotIn("posts_per_day", prompt)
+        self.assertNotIn("followers_friends_ratio", prompt)
+        self.assertNotIn("account_age_days", prompt)
 
     def test_invalid_json_response_raises(self):
         with self.assertRaises(ValueError):
