@@ -109,7 +109,7 @@ class LLMAnalysisTests(unittest.TestCase):
             '"posting_behavior":["发帖数少"],'
             '"follow_behavior":["关注多"],'
             '"profile_behavior":["资料少"],'
-            '"comment_behavior":["根据注册时间、发帖数和预测标签间接判断"]},'
+            '"comment_behavior":["依据注册时间、发帖数和预测标签，发现互动异常问题"]},'
             '"key_factors":["发帖数少"],"content_signals":["样本少"],'
             '"recommendations":["人工复核"]}'
         )
@@ -124,7 +124,7 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertIn("comment_behavior", normalized["behavior_anomalies"])
         self.assertEqual(
             normalized["behavior_anomalies"]["comment_behavior"],
-            ["根据注册时间、发帖数和预测标签间接判断"],
+            ["依据注册时间、发帖数和预测标签，发现互动异常问题"],
         )
         self.assertEqual(normalized["key_factors"], ["发帖数少"])
         self.assertIn("account_metrics", normalized)
@@ -138,7 +138,7 @@ class LLMAnalysisTests(unittest.TestCase):
             '"posting_behavior":["statuses_count 很高"],'
             '"follow_behavior":["friends_count 明显高于 followers_count"],'
             '"profile_behavior":["created_at 较新"],'
-            '"comment_behavior":["comment_behavior 只能间接判断，predicted_label 为 bot"]},'
+            '"comment_behavior":["comment_behavior 只能依据 created_at 和 statuses_count 分析，predicted_label 为 bot"]},'
             '"key_factors":["listed_count 很低"],'
             '"content_signals":["样本含导流"],'
             '"recommendations":["复核 screen_name"]}'
@@ -166,10 +166,27 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertNotIn("friends_count", rendered)
         self.assertNotIn("comment_behavior", rendered)
         self.assertNotIn("predicted_label", rendered)
+        self.assertNotIn("间接判断", rendered)
+        self.assertNotIn("间接解析", rendered)
         self.assertIn("点赞数", normalized["summary"])
         self.assertIn("发帖数", normalized["summary"])
         self.assertIn("评论行为", rendered)
         self.assertIn("预测标签", rendered)
+
+    def test_indirect_comment_wording_is_removed_from_output(self):
+        parsed = self.analyzer._parse_response(
+            '{"risk_level":"medium","summary":"模型预测结果为 bot，需复核",'
+            '"behavior_anomalies":{"comment_behavior":["依据注册时间和发帖数间接判断存在问题"]},'
+            '"key_factors":[],"content_signals":[],"recommendations":[]}'
+        )
+
+        normalized = self.analyzer._normalize_result(
+            parsed, self.user, self.prediction
+        )
+        rendered = " ".join(normalized["behavior_anomalies"]["comment_behavior"])
+
+        self.assertNotIn("间接判断", rendered)
+        self.assertIn("依据注册时间和发帖数分析存在问题", rendered)
 
     def test_risk_level_is_forced_to_prediction_probability(self):
         parsed = self.analyzer._parse_response(
@@ -195,6 +212,11 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertIn("发帖数", prompt)
         self.assertIn("实际预测标签", prompt)
         self.assertIn("没有评论数、回复数或评论内容字段", prompt)
+        self.assertIn("发现", prompt)
+        self.assertIn("未发现明显问题", prompt)
+        self.assertIn("不要输出判断方式本身的元说明", prompt)
+        self.assertNotIn("间接判断", prompt)
+        self.assertNotIn("间接解析", prompt)
         self.assertNotIn("评论/回复", prompt)
         self.assertNotIn("data_available", prompt)
         self.assertNotIn("source_field", prompt)

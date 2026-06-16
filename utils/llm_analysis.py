@@ -41,10 +41,17 @@ OUTPUT_FIELD_NAME_REPLACEMENTS = {
     "probabilities": "概率",
 }
 
+OUTPUT_PHRASE_REPLACEMENTS = {
+    "间接判断": "分析",
+    "间接解析": "分析",
+}
+
 
 def _sanitize_output_text(value: str) -> str:
     sanitized = value
     for raw, label in OUTPUT_FIELD_NAME_REPLACEMENTS.items():
+        sanitized = sanitized.replace(raw, label)
+    for raw, label in OUTPUT_PHRASE_REPLACEMENTS.items():
         sanitized = sanitized.replace(raw, label)
     return sanitized
 
@@ -189,8 +196,8 @@ class LLMAnalyzer:
    - posting_behavior：发帖行为，重点看发帖数和推文样本是否重复、广告化、诱导关注或链接导流。
    - follow_behavior：关注行为，重点看关注数、粉丝数、列表数。
    - profile_behavior：资料行为，重点看注册时间、认证状态、默认头像/主页、简介、位置和链接完整度。
-   - comment_behavior：评论行为；没有评论数、回复数或评论内容字段，只能根据注册时间、发帖数、实际预测标签和可见推文样本间接解析评论行为倾向。
-7. 评论行为分析禁止声称掌握评论数、回复数、评论内容、评论频率等未输入证据；必须明确这是基于注册时间、发帖数、实际预测标签和文本样本的间接判断。
+   - comment_behavior：评论行为；没有评论数、回复数或评论内容字段，只能依据注册时间、发帖数、实际预测标签和可见推文样本分析评论行为倾向。
+7. 评论行为分析禁止声称掌握评论数、回复数、评论内容、评论频率等未输入证据；必须写成“依据注册时间、发帖数和预测标签，发现……问题”或“依据注册时间、发帖数和预测标签，未发现明显问题”的形式，不要输出判断方式本身的元说明。
 8. key_factors 应优先列出由行为数据支持的异常点；content_signals 只描述推文样本中可见的内容信号。
 9. 输出的中文文本中禁止出现输入 JSON 的英文字段名；请使用“点赞数”“发帖数”“粉丝数”“关注数”“列表数”“注册时间”“预测标签”等中文名称。
 10. 输出必须是 JSON 对象，且只包含以下字段：
@@ -202,7 +209,7 @@ class LLMAnalyzer:
     "posting_behavior": ["发帖行为异常或正常的证据"],
     "follow_behavior": ["关注行为异常或正常的证据"],
     "profile_behavior": ["资料行为异常或正常的证据"],
-    "comment_behavior": ["评论行为间接解析的证据"]
+    "comment_behavior": ["依据注册时间、发帖数和预测标签，发现……问题或未发现明显问题"]
   }},
   "key_factors": ["影响判断的行为特征"],
   "content_signals": ["推文内容层面的信号"],
