@@ -83,12 +83,17 @@ def build_account_metrics(user: dict, now: datetime | None = None) -> dict:
     }
 
 
-def build_behavior_metrics(user: dict, now: datetime | None = None) -> dict:
+def build_behavior_metrics(
+    user: dict,
+    now: datetime | None = None,
+    prediction: dict | None = None,
+) -> dict:
     followers = _to_int(user.get("followers_count"))
     friends = _to_int(user.get("friends_count"))
     favourites = _to_int(user.get("favourites_count"))
     statuses = _to_int(user.get("statuses_count"))
     listed = _to_int(user.get("listed_count"))
+    predicted_label = prediction.get("label") if isinstance(prediction, dict) else None
 
     return {
         "like_behavior": {
@@ -112,6 +117,11 @@ def build_behavior_metrics(user: dict, now: datetime | None = None) -> dict:
             "description": _raw_str(user, "description"),
             "location": _raw_str(user, "location"),
         },
+        "comment_behavior": {
+            "created_at": _raw_str(user, "created_at"),
+            "statuses_count": statuses,
+            "predicted_label": predicted_label,
+        },
     }
 
 
@@ -132,7 +142,7 @@ def build_prompt_context(user: dict, prediction: dict) -> dict:
             "confidence": prediction.get("confidence"),
             "probabilities": prediction.get("probabilities", {}),
         },
-        "behavior_metrics": build_behavior_metrics(user),
+        "behavior_metrics": build_behavior_metrics(user, prediction=prediction),
         "profile": {
             "screen_name": _raw_str(user, "screen_name"),
             "name": _raw_str(user, "name"),

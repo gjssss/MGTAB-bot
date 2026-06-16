@@ -59,6 +59,22 @@ class AccountSummaryTests(unittest.TestCase):
         self.assertEqual(
             metrics["profile_behavior"]["created_at"], "2024-01-01T00:00:00Z"
         )
+        self.assertEqual(
+            metrics["comment_behavior"]["created_at"], "2024-01-01T00:00:00Z"
+        )
+        self.assertEqual(metrics["comment_behavior"]["statuses_count"], 120)
+
+    def test_build_behavior_metrics_can_include_comment_prediction_context(self):
+        user = {
+            "statuses_count": 120,
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+
+        metrics = build_behavior_metrics(user, prediction={"label": "bot"})
+
+        self.assertEqual(metrics["comment_behavior"]["created_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(metrics["comment_behavior"]["statuses_count"], 120)
+        self.assertEqual(metrics["comment_behavior"]["predicted_label"], "bot")
 
 
 class LLMAnalysisTests(unittest.TestCase):
@@ -92,7 +108,8 @@ class LLMAnalysisTests(unittest.TestCase):
             '"behavior_anomalies":{"like_behavior":["点赞少"],'
             '"posting_behavior":["发帖数少"],'
             '"follow_behavior":["关注多"],'
-            '"profile_behavior":["资料少"]},'
+            '"profile_behavior":["资料少"],'
+            '"comment_behavior":["根据注册时间、发帖数和预测标签间接判断"]},'
             '"key_factors":["发帖数少"],"content_signals":["样本少"],'
             '"recommendations":["人工复核"]}'
         )
@@ -102,8 +119,13 @@ class LLMAnalysisTests(unittest.TestCase):
 
         self.assertEqual(normalized["status"], "success")
         self.assertEqual(normalized["risk_level"], "high")
+        self.assertIn("模型预测结果为 bot", normalized["prediction_explanation"])
         self.assertEqual(normalized["summary"], "风险较高")
-        self.assertNotIn("comment_behavior", normalized["behavior_anomalies"])
+        self.assertIn("comment_behavior", normalized["behavior_anomalies"])
+        self.assertEqual(
+            normalized["behavior_anomalies"]["comment_behavior"],
+            ["根据注册时间、发帖数和预测标签间接判断"],
+        )
         self.assertEqual(normalized["key_factors"], ["发帖数少"])
         self.assertIn("account_metrics", normalized)
         self.assertIn("behavior_metrics", normalized)
@@ -115,7 +137,8 @@ class LLMAnalysisTests(unittest.TestCase):
             '"behavior_anomalies":{"like_behavior":["favourites_count 很低"],'
             '"posting_behavior":["statuses_count 很高"],'
             '"follow_behavior":["friends_count 明显高于 followers_count"],'
-            '"profile_behavior":["created_at 较新"]},'
+            '"profile_behavior":["created_at 较新"],'
+            '"comment_behavior":["comment_behavior 只能间接判断，predicted_label 为 bot"]},'
             '"key_factors":["listed_count 很低"],'
             '"content_signals":["样本含导流"],'
             '"recommendations":["复核 screen_name"]}'
@@ -132,6 +155,7 @@ class LLMAnalysisTests(unittest.TestCase):
                 *normalized["behavior_anomalies"]["posting_behavior"],
                 *normalized["behavior_anomalies"]["follow_behavior"],
                 *normalized["behavior_anomalies"]["profile_behavior"],
+                *normalized["behavior_anomalies"]["comment_behavior"],
                 *normalized["key_factors"],
                 *normalized["content_signals"],
                 *normalized["recommendations"],
@@ -140,15 +164,37 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertNotIn("favourites_count", rendered)
         self.assertNotIn("statuses_count", rendered)
         self.assertNotIn("friends_count", rendered)
+        self.assertNotIn("comment_behavior", rendered)
+        self.assertNotIn("predicted_label", rendered)
         self.assertIn("点赞数", normalized["summary"])
         self.assertIn("发帖数", normalized["summary"])
+        self.assertIn("评论行为", rendered)
+        self.assertIn("预测标签", rendered)
+
+    def test_risk_level_is_forced_to_prediction_probability(self):
+        parsed = self.analyzer._parse_response(
+            '{"risk_level":"low","summary":"模型预测结果为 bot，风险较低",'
+            '"behavior_anomalies":{"comment_behavior":["间接判断"]},'
+            '"key_factors":[],"content_signals":[],"recommendations":[]}'
+        )
+
+        normalized = self.analyzer._normalize_result(
+            parsed, self.user, self.prediction
+        )
+
+        self.assertEqual(normalized["risk_level"], "high")
 
     def test_build_prompt_requires_behavior_anomaly_analysis(self):
         prompt = self.analyzer._build_prompt(self.user, self.prediction)
 
         self.assertIn("账号异常行为", prompt)
         self.assertIn("like_behavior", prompt)
-        self.assertNotIn("comment_behavior", prompt)
+        self.assertIn("comment_behavior", prompt)
+        self.assertIn("评论行为", prompt)
+        self.assertIn("注册时间", prompt)
+        self.assertIn("发帖数", prompt)
+        self.assertIn("实际预测标签", prompt)
+        self.assertIn("没有评论数、回复数或评论内容字段", prompt)
         self.assertNotIn("评论/回复", prompt)
         self.assertNotIn("data_available", prompt)
         self.assertNotIn("source_field", prompt)
@@ -179,6 +225,8 @@ class LLMAnalysisTests(unittest.TestCase):
 
         self.assertEqual(analysis["status"], "skipped")
         self.assertEqual(analysis["risk_level"], "high")
+        self.assertIn("模型预测结果为 bot", analysis["prediction_explanation"])
+        self.assertIn("comment_behavior", analysis["behavior_anomalies"])
         self.assertIn("account_metrics", analysis)
 
 
