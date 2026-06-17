@@ -237,7 +237,6 @@ class LLMAnalyzer:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
-            "max_tokens": 1200,
         }
 
         attempts = max(1, self.config.max_retries)
@@ -248,7 +247,6 @@ class LLMAnalyzer:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=self.config.request_timeout,
                 )
                 if response.status_code == 200:
                     data = response.json()

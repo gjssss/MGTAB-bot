@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import Mock, patch
 
 from utils.account_summary import build_account_metrics, build_behavior_metrics
 from utils.llm_analysis import LLMAnalyzer
@@ -97,7 +98,6 @@ class LLMAnalysisTests(unittest.TestCase):
                 api_base="https://example.test/v1",
                 model="test-model",
                 api_key="test-key",
-                request_timeout=1,
                 max_retries=1,
             )
         )
@@ -227,6 +227,24 @@ class LLMAnalysisTests(unittest.TestCase):
         self.assertNotIn("followers_friends_ratio", prompt)
         self.assertNotIn("account_age_days", prompt)
 
+    @patch("requests.post")
+    def test_call_chat_completions_does_not_set_token_or_timeout_limits(
+        self, mock_post: Mock
+    ):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": '{"summary":"ok"}'}}]
+        }
+        mock_post.return_value = response
+
+        content = self.analyzer._call_chat_completions("prompt")
+
+        self.assertEqual(content, '{"summary":"ok"}')
+        _, kwargs = mock_post.call_args
+        self.assertNotIn("timeout", kwargs)
+        self.assertNotIn("max_tokens", kwargs["json"])
+
     def test_invalid_json_response_raises(self):
         with self.assertRaises(ValueError):
             self.analyzer._parse_response("not json")
@@ -238,7 +256,6 @@ class LLMAnalysisTests(unittest.TestCase):
                 api_base="https://example.test/v1",
                 model="test-model",
                 api_key="",
-                request_timeout=1,
                 max_retries=1,
             )
         )

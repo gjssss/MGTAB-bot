@@ -32,7 +32,6 @@ class LLMConfig:
     api_base: str
     model: str
     api_key: str
-    request_timeout: int
     max_retries: int
 
     @property
@@ -46,7 +45,6 @@ class LLMConfig:
             api_base=os.getenv("OPENAI_API_BASE", "https://api.chatanywhere.org"),
             model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
             api_key=os.getenv("OPENAI_API_KEY", ""),
-            request_timeout=_parse_int(os.getenv("LLM_REQUEST_TIMEOUT"), 30),
             max_retries=_parse_int(os.getenv("LLM_MAX_RETRIES"), 3),
         )
 
